@@ -1,0 +1,2323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WW2 Tank Battles - All Fronts Terrain Capture</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw-src.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <!-- html2canvas for capturing map area -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0a1f2a;
+            overflow: hidden;
+        }
+        #map {
+            height: 100vh;
+            width: 100vw;
+            transition: margin-left 0.3s ease;
+        }
+        .leaflet-popup-content h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid;
+            padding-bottom: 5px;
+            padding-right: 20px;
+        }
+        .battle-marker {
+            background: none;
+            border: none;
+        }
+        .tank-icon {
+            filter: drop-shadow(3px 3px 3px rgba(0,0,0,0.7));
+            transition: transform 0.3s ease;
+        }
+        .tank-icon:hover {
+            transform: scale(1.2);
+        }
+        
+        /* DOCKABLE SIDEBAR */
+        .dockable-sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 450px;
+            height: 100vh;
+            background: rgba(10, 31, 42, 0.97);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s ease;
+            box-shadow: 5px 0 15px rgba(0,0,0,0.5);
+            border-right: 2px solid #0088cc;
+        }
+        
+        .sidebar-collapsed {
+            transform: translateX(-445px);
+        }
+        
+        .sidebar-toggle {
+            position: absolute;
+            top: 50%;
+            right: -25px;
+            width: 25px;
+            height: 50px;
+            background: #0088cc;
+            border: 2px solid #006699;
+            border-left: none;
+            border-radius: 0 5px 5px 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+            transform: translateY(-50%);
+            transition: all 0.3s ease;
+            z-index: 1001;
+        }
+        
+        .sidebar-toggle:hover {
+            background: #00aaff;
+            width: 30px;
+        }
+        
+        .sidebar-toggle i {
+            transition: transform 0.3s ease;
+        }
+        
+        .sidebar-collapsed .sidebar-toggle i {
+            transform: rotate(180deg);
+        }
+        
+        /* Sidebar Header */
+        .sidebar-header {
+            padding: 15px;
+            background: rgba(0, 136, 204, 0.2);
+            border-bottom: 2px solid #0088cc;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        
+        .sidebar-header h3 {
+            margin: 0;
+            color: #00ccff;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        /* Battle Filter Controls */
+        .filter-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .filter-row {
+            display: flex;
+            gap: 10px;
+            justify-content: space-between;
+        }
+        
+        .filter-btn {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.1);
+            color: white;
+            cursor: pointer;
+            font-size: 13px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        
+        .filter-btn:hover {
+            background: rgba(255,255,255,0.2);
+            transform: translateY(-1px);
+        }
+        
+        .filter-btn.active {
+            background: linear-gradient(135deg, #0088cc, #006699);
+            box-shadow: 0 2px 8px rgba(0,136,204,0.3);
+        }
+        
+        .filter-btn.front-eastern {
+            background: linear-gradient(135deg, #4a6b2a, #2a4a1a);
+        }
+        
+        .filter-btn.front-western {
+            background: linear-gradient(135deg, #4169E1, #1E40AF);
+        }
+        
+        .filter-btn.front-north-africa {
+            background: linear-gradient(135deg, #DAA520, #B8860B);
+        }
+        
+        .filter-btn.front-italian {
+            background: linear-gradient(135deg, #9370DB, #7B68EE);
+        }
+        
+        .filter-btn.front-pacific {
+            background: linear-gradient(135deg, #DC143C, #B22222);
+        }
+        
+        .filter-btn.all-battles {
+            background: linear-gradient(135deg, #888, #555);
+        }
+        
+        /* Scrollable Content Area */
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 15px;
+            scrollbar-width: thin;
+            scrollbar-color: #0088cc #1a2530;
+        }
+        
+        .sidebar-content::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .sidebar-content::-webkit-scrollbar-track {
+            background: #1a2530;
+            border-radius: 4px;
+        }
+        
+        .sidebar-content::-webkit-scrollbar-thumb {
+            background: #0088cc;
+            border-radius: 4px;
+        }
+        
+        .sidebar-content::-webkit-scrollbar-thumb:hover {
+            background: #00aaff;
+        }
+        
+        /* Section Styling */
+        .sidebar-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .sidebar-section h4 {
+            margin: 0 0 15px 0;
+            color: #ffcc00;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 204, 0, 0.3);
+        }
+        
+        /* Control buttons */
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .control-btn {
+            flex: 1;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            background: linear-gradient(135deg, #4a6b2a, #2a4a1a);
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            text-align: center;
+            font-size: 14px;
+        }
+        
+        .control-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        
+        .control-btn.select-mode {
+            background: linear-gradient(135deg, #0088cc, #006699);
+        }
+        
+        .control-btn.clear {
+            background: linear-gradient(135deg, #cc3300, #992200);
+        }
+        
+        /* Terrain selector */
+        .terrain-options {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .terrain-option {
+            display: flex;
+            align-items: center;
+            padding: 8px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.2s;
+            background: rgba(255,255,255,0.05);
+        }
+        
+        .terrain-option:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        .terrain-option.selected {
+            background: rgba(139, 69, 19, 0.3);
+            border: 1px solid #d2691e;
+        }
+        
+        .terrain-option input {
+            margin-right: 10px;
+        }
+        
+        /* Area dimensions display */
+        .area-dimensions {
+            font-size: 16px;
+            font-weight: bold;
+            color: #00ff88;
+            text-align: center;
+            margin: 15px 0;
+            padding: 12px;
+            background: rgba(0, 50, 0, 0.3);
+            border-radius: 6px;
+            border: 1px solid #00ff88;
+        }
+        
+        /* Preview section */
+        .preview-container {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+            padding: 12px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        
+        .preview-image {
+            max-width: 100%;
+            border-radius: 4px;
+            border: 1px solid #00ccff;
+            display: none;
+        }
+        
+        .preview-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .preview-btn {
+            flex: 1;
+            padding: 8px;
+            background: linear-gradient(135deg, #6a89cc, #4a69bd);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        
+        .preview-btn:hover {
+            background: linear-gradient(135deg, #7a99dd, #5a79cd);
+        }
+        
+        /* Settings controls */
+        .settings-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .setting-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .setting-item:last-child {
+            border-bottom: none;
+        }
+        
+        .setting-item label {
+            color: #a3d977;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .setting-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+        }
+        
+        .setting-item select, .setting-item input[type="range"] {
+            background: #1a2530;
+            color: white;
+            border: 1px solid #0088cc;
+            border-radius: 4px;
+            padding: 5px;
+            width: 150px;
+        }
+        
+        /* Export options */
+        .export-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .export-btn {
+            background: linear-gradient(135deg, #0088cc, #006699);
+            color: white;
+            border: none;
+            padding: 12px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            text-align: center;
+            font-size: 14px;
+        }
+        
+        .export-btn:hover {
+            background: linear-gradient(135deg, #00aaff, #0088cc);
+            transform: translateY(-2px);
+        }
+        
+        /* Enhanced Legend styling */
+        .legend-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .legend-column {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .front-legend {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            padding: 6px 10px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 4px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.5);
+        }
+        
+        .victory-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            padding: 6px 10px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 4px;
+        }
+        
+        .victory-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        
+        .german-bg {
+            background: #4a4a4a;
+        }
+        
+        .soviet-bg {
+            background: #4a6b2a;
+        }
+        
+        .allied-bg {
+            background: #4169E1;
+        }
+        
+        .elevation-bar {
+            height: 10px;
+            background: linear-gradient(to right, #00b09b, #96c93d, #ffcc00, #ff7e00, #ff0000);
+            border-radius: 3px;
+            margin: 10px 0;
+        }
+        
+        /* Status message */
+        .status-message {
+            text-align: center;
+            padding: 10px;
+            margin: 15px 0;
+            border-radius: 5px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .status-message.success {
+            background: rgba(0, 255, 0, 0.2);
+            border: 1px solid #00ff00;
+            color: #00ff00;
+            display: block;
+        }
+        
+        .status-message.error {
+            background: rgba(255, 0, 0, 0.2);
+            border: 1px solid #ff0000;
+            color: #ff0000;
+            display: block;
+        }
+        
+        /* Info boxes */
+        .info-box {
+            background: rgba(100, 100, 255, 0.1);
+            padding: 12px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 12px;
+            border: 1px dashed #8888ff;
+        }
+        
+        /* Loading overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            display: none;
+        }
+        
+        .loading-spinner {
+            color: white;
+            font-size: 24px;
+            text-align: center;
+        }
+        
+        /* Leaflet Draw styling */
+        .leaflet-draw-toolbar {
+            margin-top: 12px;
+        }
+        
+        .leaflet-draw-toolbar-top {
+            margin-top: 50px;
+        }
+        
+        .leaflet-draw-actions {
+            display: none !important;
+        }
+        
+        /* Map adjustment for sidebar */
+        .map-with-sidebar {
+            margin-left: 450px;
+            width: calc(100vw - 450px);
+        }
+        
+        .map-fullscreen {
+            margin-left: 0;
+            width: 100vw;
+        }
+        
+        /* Battle counter */
+        .battle-counter {
+            text-align: center;
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .dockable-sidebar {
+                width: 350px;
+            }
+            
+            .map-with-sidebar {
+                margin-left: 350px;
+                width: calc(100vw - 350px);
+            }
+            
+            .legend-container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        @media (max-width: 576px) {
+            .dockable-sidebar {
+                width: 320px;
+            }
+            
+            .map-with-sidebar {
+                margin-left: 320px;
+                width: calc(100vw - 320px);
+            }
+            
+            .sidebar-content {
+                padding: 10px;
+            }
+            
+            .sidebar-section {
+                padding: 10px;
+            }
+            
+            .filter-controls {
+                padding: 10px;
+            }
+            
+            .filter-btn {
+                font-size: 11px;
+                padding: 6px 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner">
+            <div>Processing Heightmap...</div>
+            <div>⏳ Please wait</div>
+        </div>
+    </div>
+    
+    <!-- Docked Sidebar -->
+    <div class="dockable-sidebar" id="sidebar">
+        <div class="sidebar-toggle" id="sidebarToggle">
+            <i class="fas fa-chevron-left"></i>
+        </div>
+        
+        <div class="sidebar-header">
+            <h3><i class="fas fa-tank"></i> WW2 Tank Battles - All Fronts</h3>
+            <div class="battle-counter" id="battleCounter">Showing 30/30 battles</div>
+        </div>
+        
+        <!-- Battle Filter Controls -->
+        <div class="filter-controls">
+            <div class="filter-row">
+                <button class="filter-btn all-battles active" data-front="all">
+                    <i class="fas fa-globe"></i> All Battles
+                </button>
+                <button class="filter-btn front-eastern" data-front="eastern">
+                    <i class="fas fa-snowflake"></i> Eastern Front
+                </button>
+                <button class="filter-btn front-western" data-front="western">
+                    <i class="fas fa-umbrella"></i> Western Front
+                </button>
+            </div>
+            <div class="filter-row">
+                <button class="filter-btn front-north-africa" data-front="north-africa">
+                    <i class="fas fa-sun"></i> North Africa
+                </button>
+                <button class="filter-btn front-italian" data-front="italian">
+                    <i class="fas fa-mountain"></i> Italian Front
+                </button>
+                <button class="filter-btn front-pacific" data-front="pacific">
+                    <i class="fas fa-water"></i> Pacific Front
+                </button>
+            </div>
+        </div>
+        
+        <div class="sidebar-content" id="sidebarContent">
+            <!-- Terrain Capture Section -->
+            <div class="sidebar-section">
+                <h4><i class="fas fa-map"></i> Terrain Capture</h4>
+                
+                <div class="control-buttons">
+                    <button class="control-btn select-mode" id="selectAreaBtn">
+                        <i class="fas fa-draw-polygon"></i> Select Area
+                    </button>
+                    <button class="control-btn clear" id="clearSelectionBtn">
+                        <i class="fas fa-trash"></i> Clear
+                    </button>
+                </div>
+                
+                <div class="terrain-options">
+                    <label class="terrain-option" id="optionRelief">
+                        <input type="radio" name="terrainType" value="relief" checked>
+                        <span>Relief Map (Cleanest - No roads)</span>
+                    </label>
+                    <label class="terrain-option" id="optionSRTM">
+                        <input type="radio" name="terrainType" value="srtm">
+                        <span>SRTM Elevation (Shaded relief)</span>
+                    </label>
+                    <label class="terrain-option" id="optionHillshade">
+                        <input type="radio" name="terrainType" value="hillshade">
+                        <span>Hillshade (Terrain shading)</span>
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Area Dimensions Display -->
+            <div class="sidebar-section" id="areaInfo" style="display: none;">
+                <h4><i class="fas fa-ruler-combined"></i> Selected Area</h4>
+                <div class="area-dimensions" id="dimensionsDisplay">
+                    Area: 0 × 0 km
+                </div>
+                
+                <div class="preview-container">
+                    <img id="terrainPreview" class="preview-image" alt="Terrain Preview">
+                    <div class="preview-controls">
+                        <button class="preview-btn" id="captureBtn">
+                            <i class="fas fa-camera"></i> Capture Terrain
+                        </button>
+                        <button class="preview-btn" id="clearPreviewBtn">
+                            <i class="fas fa-times"></i> Clear Preview
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Heightmap Settings -->
+            <div class="sidebar-section">
+                <h4><i class="fas fa-sliders-h"></i> Heightmap Settings</h4>
+                
+                <div class="settings-controls">
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="enhanceContrast" checked>
+                            <i class="fas fa-adjust"></i> Enhance contrast
+                        </label>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="invertHeights">
+                            <i class="fas fa-exchange-alt"></i> Invert heights
+                        </label>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <label>
+                            <i class="fas fa-mountain"></i> Height scale: <span id="heightScaleValue">1.0</span>x
+                        </label>
+                        <input type="range" id="heightScale" min="0.1" max="3.0" step="0.1" value="1.0">
+                    </div>
+                    
+                    <div class="setting-item">
+                        <label>
+                            <i class="fas fa-expand-alt"></i> Resolution:
+                        </label>
+                        <select id="resolution">
+                            <option value="256">256×256</option>
+                            <option value="512" selected>512×512</option>
+                            <option value="1024">1024×1024</option>
+                            <option value="2048">2048×2048</option>
+                        </select>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="embedMetadata" checked>
+                            <i class="fas fa-info-circle"></i> Embed metadata
+                        </label>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="addWatermark" checked>
+                            <i class="fas fa-water"></i> Add watermark
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Export Options -->
+            <div class="sidebar-section">
+                <h4><i class="fas fa-download"></i> Export to Unity</h4>
+                
+                <div class="export-controls">
+                    <button class="export-btn" id="exportPNGBtn">
+                        <i class="fas fa-file-image"></i> PNG Heightmap
+                    </button>
+                    <button class="export-btn" id="exportRawBtn">
+                        <i class="fas fa-file-code"></i> RAW Heightmap (16-bit)
+                    </button>
+                    <button class="export-btn" id="exportJSONBtn">
+                        <i class="fas fa-file-code"></i> Terrain Data (JSON)
+                    </button>
+                </div>
+                
+                <div class="info-box">
+                    <p><strong><i class="fas fa-info-circle"></i> Unity Import:</strong></p>
+                    <p>• PNG: Grayscale heightmap with metadata</p>
+                    <p>• RAW: 16-bit little-endian format</p>
+                    <p>• Area dimensions embedded in exports</p>
+                </div>
+            </div>
+            
+            <!-- Enhanced Legend Section -->
+            <div class="sidebar-section">
+                <h4><i class="fas fa-flag"></i> Battle Legend</h4>
+                
+                <div class="legend-container">
+                    <div class="legend-column">
+                        <div class="victory-item">
+                            <div class="victory-color german-bg"></div>
+                            <span>Axis Victory</span>
+                        </div>
+                        <div class="victory-item">
+                            <div class="victory-color soviet-bg"></div>
+                            <span>Soviet Victory</span>
+                        </div>
+                        <div class="victory-item">
+                            <div class="victory-color allied-bg"></div>
+                            <span>Allied Victory</span>
+                        </div>
+                    </div>
+                    
+                    <div class="legend-column">
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: #FF4444;"></div>
+                            <span>1941</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: #FF8C00;"></div>
+                            <span>1942</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: #DC143C;"></div>
+                            <span>1943</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: #32CD32;"></div>
+                            <span>1944</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: #4B0082;"></div>
+                            <span>1945</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="front-legend">
+                    <h4 style="margin-top: 15px; margin-bottom: 10px;"><i class="fas fa-map-signs"></i> Front Legend</h4>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: linear-gradient(135deg, #4a6b2a, #2a4a1a);"></div>
+                        <span>Eastern Front</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: linear-gradient(135deg, #4169E1, #1E40AF);"></div>
+                        <span>Western Front</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: linear-gradient(135deg, #DAA520, #B8860B);"></div>
+                        <span>North Africa</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: linear-gradient(135deg, #9370DB, #7B68EE);"></div>
+                        <span>Italian Front</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: linear-gradient(135deg, #DC143C, #B22222);"></div>
+                        <span>Pacific Front</span>
+                    </div>
+                </div>
+                
+                <h4 style="margin-top: 20px; margin-bottom: 10px;"><i class="fas fa-mountain"></i> Elevation</h4>
+                <div class="elevation-bar"></div>
+                <p style="font-size: 12px; color: #ccc; text-align: center;">
+                    Number on tank icon shows elevation in meters
+                </p>
+            </div>
+            
+            <!-- Status Message -->
+            <div class="status-message" id="statusMessage"></div>
+            
+            <!-- Instructions -->
+            <div class="sidebar-section" style="background: rgba(0, 100, 150, 0.2);">
+                <h4><i class="fas fa-info-circle"></i> Instructions</h4>
+                <p style="font-size: 13px; color: #ccc; line-height: 1.4;">
+                    1. Filter battles by front using buttons above<br>
+                    2. Select terrain layer (Relief Map recommended)<br>
+                    3. Click "Select Area" and draw on map<br>
+                    4. Adjust settings as needed<br>
+                    5. Capture and export heightmap<br>
+                    6. Import into Unity for game terrain
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Top 30 WWII Tank Battles from All Fronts
+        const tankBattles = [
+            // EASTERN FRONT (10 battles)
+            {
+                id: 1,
+                name: "Battle of Brody (1941)",
+                location: "Brody, Ukraine",
+                coordinates: [50.08, 25.15],
+                elevation: 223,
+                elevation_ft: 732,
+                terrain: "Rolling hills, plains, and forests",
+                date: "June 23-30, 1941",
+                description: "One of the largest tank battles of Operation Barbarossa.",
+                combatants: "Germany vs Soviet Union",
+                tanks: "800 German vs 2,800 Soviet",
+                result: "German victory",
+                victory: "axis",
+                significance: "Largest tank battle of 1941",
+                front: "eastern",
+                iconColor: "#FF4444",
+                year: 1941
+            },
+            {
+                id: 2,
+                name: "Battle of Moscow (1941)",
+                location: "Moscow, Russia",
+                coordinates: [55.75, 37.62],
+                elevation: 156,
+                elevation_ft: 512,
+                terrain: "Flat plains with some river valleys",
+                date: "October 1941 - January 1942",
+                description: "German offensive to capture Moscow.",
+                combatants: "Germany vs Soviet Union",
+                tanks: "1,000 German vs 1,000+ Soviet",
+                result: "Soviet victory",
+                victory: "soviet",
+                significance: "First major German defeat on Eastern Front",
+                front: "eastern",
+                iconColor: "#FF6666",
+                year: 1941
+            },
+            {
+                id: 3,
+                name: "Battle of Kharkov (1942)",
+                location: "Kharkiv, Ukraine",
+                coordinates: [49.99, 36.23],
+                elevation: 152,
+                elevation_ft: 499,
+                terrain: "Steppe plains with river valleys",
+                date: "May 12-28, 1942",
+                description: "Soviet offensive that turned into a disastrous encirclement.",
+                combatants: "Germany vs Soviet Union",
+                tanks: "800 German vs 900 Soviet",
+                result: "German victory",
+                victory: "axis",
+                significance: "Cleared way for German summer offensive toward Stalingrad",
+                front: "eastern",
+                iconColor: "#FF8C00",
+                year: 1942
+            },
+            {
+                id: 4,
+                name: "Battle of Stalingrad (1942-43)",
+                location: "Volgograd, Russia",
+                coordinates: [48.70, 44.52],
+                elevation: 80,
+                elevation_ft: 262,
+                terrain: "Urban, river valley, and steppe",
+                date: "August 1942 - February 1943",
+                description: "Intense urban combat on the west bank of the Volga River.",
+                combatants: "Germany vs Soviet Union",
+                tanks: "500+ German vs 1,500+ Soviet",
+                result: "Soviet victory",
+                victory: "soviet",
+                significance: "Turning point of WW2",
+                front: "eastern",
+                iconColor: "#FFA500",
+                year: 1942
+            },
+            {
+                id: 5,
+                name: "Battle of Kursk (1943)",
+                location: "Kursk, Russia",
+                coordinates: [51.73, 36.19],
+                elevation: 250,
+                elevation_ft: 820,
+                terrain: "Rolling hills, grasslands, and ravines",
+                date: "July 5 - August 23, 1943",
+                description: "Largest tank battle in history.",
+                combatants: "Germany vs Soviet Union",
+                tanks: "2,928 German vs 7,360 Soviet",
+                result: "Soviet victory",
+                victory: "soviet",
+                significance: "Largest tank battle ever",
+                front: "eastern",
+                iconColor: "#DC143C",
+                year: 1943
+            },
+            {
+                id: 6,
+                name: "Battle of Prokhorovka (1943)",
+                location: "Prokhorovka, Russia",
+                coordinates: [51.04, 36.73],
+                elevation: 240,
+                elevation_ft: 787,
+                terrain: "Open rolling hills and farmland",
+                date: "July 12, 1943",
+                description: "Major engagement within Battle of Kursk.",
+                combatants: "Germany vs Soviet Union",
+                tanks: "~300 German vs ~800 Soviet",
+                result: "Soviet strategic victory",
+                victory: "soviet",
+                significance: "Climax of Kursk battle",
+                front: "eastern",
+                iconColor: "#B22222",
+                year: 1943
+            },
+            {
+                id: 7,
+                name: "Battle of Kiev (1943)",
+                location: "Kyiv, Ukraine",
+                coordinates: [50.45, 30.52],
+                elevation: 179,
+                elevation_ft: 587,
+                terrain: "River bluffs, forests, and urban areas",
+                date: "November 3-13, 1943",
+                description: "Soviet offensive to liberate Kiev.",
+                combatants: "Germany vs Soviet Union",
+                tanks: "400 German vs 2,000+ Soviet",
+                result: "Soviet victory",
+                victory: "soviet",
+                significance: "Liberation of Kiev",
+                front: "eastern",
+                iconColor: "#32CD32",
+                year: 1943
+            },
+            {
+                id: 8,
+                name: "Battle of Korsun-Cherkassy (1944)",
+                location: "Cherkasy, Ukraine",
+                coordinates: [49.44, 32.06],
+                elevation: 110,
+                elevation_ft: 361,
+                terrain: "River valleys, rolling plains, and forests",
+                date: "January 24 - February 16, 1944",
+                description: "Soviet encirclement operation.",
+                combatants: "Germany vs Soviet Union",
+                tanks: "~200 German vs ~500 Soviet",
+                result: "Soviet victory",
+                victory: "soviet",
+                significance: "'Second Stalingrad'",
+                front: "eastern",
+                iconColor: "#1E90FF",
+                year: 1944
+            },
+            {
+                id: 9,
+                name: "Operation Bagration (1944)",
+                location: "Minsk, Belarus",
+                coordinates: [53.90, 27.56],
+                elevation: 220,
+                elevation_ft: 722,
+                terrain: "Forests, marshes, and rolling hills",
+                date: "June 22 - August 19, 1944",
+                description: "Massive Soviet offensive through Belarus.",
+                combatants: "Germany vs Soviet Union",
+                tanks: "~500 German vs 4,000+ Soviet",
+                result: "Decisive Soviet victory",
+                victory: "soviet",
+                significance: "Destruction of German Army Group Center",
+                front: "eastern",
+                iconColor: "#4169E1",
+                year: 1944
+            },
+            {
+                id: 10,
+                name: "Battle of Berlin (1945)",
+                location: "Berlin, Germany",
+                coordinates: [52.52, 13.41],
+                elevation: 34,
+                elevation_ft: 112,
+                terrain: "Urban, rivers, and low plains",
+                date: "April 16 - May 2, 1945",
+                description: "Final major offensive in Berlin.",
+                combatants: "Germany vs Soviet Union",
+                tanks: "~700 German vs 6,000+ Soviet",
+                result: "Soviet victory",
+                victory: "soviet",
+                significance: "End of WW2 in Europe",
+                front: "eastern",
+                iconColor: "#4B0082",
+                year: 1945
+            },
+            
+            // WESTERN FRONT (8 battles)
+            {
+                id: 11,
+                name: "Battle of Arras (1940)",
+                location: "Arras, France",
+                coordinates: [50.29, 2.78],
+                elevation: 72,
+                elevation_ft: 236,
+                terrain: "Urban, open countryside",
+                date: "May 21, 1940",
+                description: "British counter-attack during Fall of France.",
+                combatants: "Britain vs Germany",
+                tanks: "74 British vs unknown German",
+                result: "Limited Allied success",
+                victory: "allied",
+                significance: "Delayed German advance to Dunkirk",
+                front: "western",
+                iconColor: "#FF4444",
+                year: 1940
+            },
+            {
+                id: 12,
+                name: "Battle of France (1940)",
+                location: "Sedan, France",
+                coordinates: [49.70, 4.95],
+                elevation: 157,
+                elevation_ft: 515,
+                terrain: "River crossings, wooded hills",
+                date: "May 10-25, 1940",
+                description: "German breakthrough at Sedan.",
+                combatants: "Germany vs France/Britain",
+                tanks: "2,445 German vs 3,384 Allied",
+                result: "German victory",
+                victory: "axis",
+                significance: "Fall of France",
+                front: "western",
+                iconColor: "#FF6666",
+                year: 1940
+            },
+            {
+                id: 13,
+                name: "Operation Goodwood (1944)",
+                location: "Caen, France",
+                coordinates: [49.18, -0.37],
+                elevation: 8,
+                elevation_ft: 26,
+                terrain: "Open farmland, villages",
+                date: "July 18-20, 1944",
+                description: "British armored offensive near Caen.",
+                combatants: "Britain vs Germany",
+                tanks: "1,100 British vs 377 German",
+                result: "British tactical victory",
+                victory: "allied",
+                significance: "Largest tank battle in Normandy",
+                front: "western",
+                iconColor: "#32CD32",
+                year: 1944
+            },
+            {
+                id: 14,
+                name: "Battle of Falaise (1944)",
+                location: "Falaise, France",
+                coordinates: [48.90, -0.20],
+                elevation: 168,
+                elevation_ft: 551,
+                terrain: "Bocage countryside, hills",
+                date: "August 12-21, 1944",
+                description: "Allied encirclement of German forces.",
+                combatants: "Allies vs Germany",
+                tanks: "~1,500 Allied vs ~500 German",
+                result: "Decisive Allied victory",
+                victory: "allied",
+                significance: "Destruction of German forces in Normandy",
+                front: "western",
+                iconColor: "#32CD32",
+                year: 1944
+            },
+            {
+                id: 15,
+                name: "Battle of the Bulge (1944-45)",
+                location: "Bastogne, Belgium",
+                coordinates: [50.00, 5.72],
+                elevation: 510,
+                elevation_ft: 1673,
+                terrain: "Ardennes forest, hills, snow",
+                date: "December 16, 1944 - January 25, 1945",
+                description: "Last major German offensive in the West.",
+                combatants: "Germany vs Allies",
+                tanks: "~1,800 German vs ~1,400 Allied",
+                result: "Allied victory",
+                victory: "allied",
+                significance: "Last major German offensive",
+                front: "western",
+                iconColor: "#4B0082",
+                year: 1944
+            },
+            {
+                id: 16,
+                name: "Battle of Villers-Bocage (1944)",
+                location: "Villers-Bocage, France",
+                coordinates: [49.08, -0.66],
+                elevation: 120,
+                elevation_ft: 394,
+                terrain: "Bocage, small town",
+                date: "June 13, 1944",
+                description: "Michael Wittmann's famous tank action.",
+                combatants: "Britain vs Germany",
+                tanks: "~200 British vs unknown German",
+                result: "German tactical victory",
+                victory: "axis",
+                significance: "Famous single tank engagement",
+                front: "western",
+                iconColor: "#32CD32",
+                year: 1944
+            },
+            {
+                id: 17,
+                name: "Battle of the Reichswald (1945)",
+                location: "Kleve, Germany",
+                coordinates: [51.79, 6.14],
+                elevation: 12,
+                elevation_ft: 39,
+                terrain: "Forest, flooded plains",
+                date: "February 8-21, 1945",
+                description: "Allied offensive into Germany.",
+                combatants: "Allies vs Germany",
+                tanks: "~1,000 Allied vs unknown German",
+                result: "Allied victory",
+                victory: "allied",
+                significance: "Opened way to the Rhine",
+                front: "western",
+                iconColor: "#4B0082",
+                year: 1945
+            },
+            {
+                id: 18,
+                name: "Operation Totalize (1944)",
+                location: "Normandy, France",
+                coordinates: [49.11, -0.30],
+                elevation: 67,
+                elevation_ft: 220,
+                terrain: "Open countryside, ridges",
+                date: "August 8-9, 1944",
+                description: "Canadian armored breakthrough.",
+                combatants: "Canada vs Germany",
+                tanks: "720 Canadian vs unknown German",
+                result: "Limited Allied success",
+                victory: "allied",
+                significance: "Breakthrough south of Caen",
+                front: "western",
+                iconColor: "#32CD32",
+                year: 1944
+            },
+            
+            // NORTH AFRICA (6 battles)
+            {
+                id: 19,
+                name: "Operation Crusader (1941)",
+                location: "Tobruk, Libya",
+                coordinates: [32.08, 23.96],
+                elevation: 2,
+                elevation_ft: 7,
+                terrain: "Desert, rocky escarpments",
+                date: "November 18 - December 30, 1941",
+                description: "British relief of Tobruk.",
+                combatants: "Britain vs Germany/Italy",
+                tanks: "~750 British vs ~390 Axis",
+                result: "Allied victory",
+                victory: "allied",
+                significance: "Relief of Tobruk",
+                front: "north-africa",
+                iconColor: "#FF4444",
+                year: 1941
+            },
+            {
+                id: 20,
+                name: "Battle of Gazala (1942)",
+                location: "Gazala, Libya",
+                coordinates: [32.15, 23.35],
+                elevation: 10,
+                elevation_ft: 33,
+                terrain: "Desert, minefields",
+                date: "May 26 - June 21, 1942",
+                description: "Rommel's outflanking maneuver.",
+                combatants: "Germany/Italy vs Britain",
+                tanks: "560 Axis vs 850 British",
+                result: "Axis victory",
+                victory: "axis",
+                significance: "Rommel's greatest victory",
+                front: "north-africa",
+                iconColor: "#FF8C00",
+                year: 1942
+            },
+            {
+                id: 21,
+                name: "First Battle of El Alamein (1942)",
+                location: "El Alamein, Egypt",
+                coordinates: [30.84, 28.95],
+                elevation: 7,
+                elevation_ft: 23,
+                terrain: "Desert, coastal strip",
+                date: "July 1-27, 1942",
+                description: "Stopped Rommel's advance to Egypt.",
+                combatants: "Allies vs Axis",
+                tanks: "~200 each side",
+                result: "Stalemate",
+                victory: "allied",
+                significance: "Halted Axis advance",
+                front: "north-africa",
+                iconColor: "#FF8C00",
+                year: 1942
+            },
+            {
+                id: 22,
+                name: "Second Battle of El Alamein (1942)",
+                location: "El Alamein, Egypt",
+                coordinates: [30.84, 28.95],
+                elevation: 7,
+                elevation_ft: 23,
+                terrain: "Desert, minefields",
+                date: "October 23 - November 11, 1942",
+                description: "Montgomery's decisive victory.",
+                combatants: "Britain vs Germany/Italy",
+                tanks: "1,029 British vs 496 German/Italian",
+                result: "Decisive Allied victory",
+                victory: "allied",
+                significance: "Turning point in North Africa",
+                front: "north-africa",
+                iconColor: "#FF8C00",
+                year: 1942
+            },
+            {
+                id: 23,
+                name: "Battle of Kasserine Pass (1943)",
+                location: "Kasserine, Tunisia",
+                coordinates: [35.25, 8.75],
+                elevation: 700,
+                elevation_ft: 2297,
+                terrain: "Mountain pass, valleys",
+                date: "February 19-24, 1943",
+                description: "Rommel's attack on inexperienced US forces.",
+                combatants: "Germany vs United States",
+                tanks: "~150 each side",
+                result: "Axis tactical victory",
+                victory: "axis",
+                significance: "First major US-German battle",
+                front: "north-africa",
+                iconColor: "#DC143C",
+                year: 1943
+            },
+            {
+                id: 24,
+                name: "Battle of Medenine (1943)",
+                location: "Medenine, Tunisia",
+                coordinates: [33.35, 10.51],
+                elevation: 200,
+                elevation_ft: 656,
+                terrain: "Desert, hills",
+                date: "March 6, 1943",
+                description: "Rommel's last offensive in Africa.",
+                combatants: "Germany vs Britain",
+                tanks: "~140 German vs ~400 British",
+                result: "Allied victory",
+                victory: "allied",
+                significance: "Rommel's last offensive",
+                front: "north-africa",
+                iconColor: "#DC143C",
+                year: 1943
+            },
+            
+            // ITALIAN FRONT (3 battles)
+            {
+                id: 25,
+                name: "Battle of Salerno (1943)",
+                location: "Salerno, Italy",
+                coordinates: [40.68, 14.77],
+                elevation: 4,
+                elevation_ft: 13,
+                terrain: "Coastal plain, mountains",
+                date: "September 9-16, 1943",
+                description: "Allied invasion of mainland Italy.",
+                combatants: "Allies vs Germany",
+                tanks: "~600 Allied vs unknown German",
+                result: "Allied victory",
+                victory: "allied",
+                significance: "Invasion of mainland Italy",
+                front: "italian",
+                iconColor: "#DC143C",
+                year: 1943
+            },
+            {
+                id: 26,
+                name: "Battle of Monte Cassino (1944)",
+                location: "Cassino, Italy",
+                coordinates: [41.49, 13.82],
+                elevation: 520,
+                elevation_ft: 1706,
+                terrain: "Mountains, valleys, rivers",
+                date: "January 17 - May 18, 1944",
+                description: "Series of assaults on German defenses.",
+                combatants: "Allies vs Germany",
+                tanks: "~900 Allied vs unknown German",
+                result: "Allied victory",
+                victory: "allied",
+                significance: "Broke Gustav Line",
+                front: "italian",
+                iconColor: "#32CD32",
+                year: 1944
+            },
+            {
+                id: 27,
+                name: "Battle of the Gothic Line (1944)",
+                location: "Rimini, Italy",
+                coordinates: [44.06, 12.57],
+                elevation: 6,
+                elevation_ft: 20,
+                terrain: "Mountains, rivers",
+                date: "August 25 - December 17, 1944",
+                description: "Allied assault on German defensive line.",
+                combatants: "Allies vs Germany",
+                tanks: "~1,200 Allied vs unknown German",
+                result: "Allied breakthrough",
+                victory: "allied",
+                significance: "Last major German defensive line in Italy",
+                front: "italian",
+                iconColor: "#32CD32",
+                year: 1944
+            },
+            
+            // PACIFIC FRONT (3 battles)
+            {
+                id: 28,
+                name: "Battle of Saipan (1944)",
+                location: "Saipan, Mariana Islands",
+                coordinates: [15.18, 145.75],
+                elevation: 474,
+                elevation_ft: 1555,
+                terrain: "Island, jungle, mountains",
+                date: "June 15 - July 9, 1944",
+                description: "Amphibious assault on Japanese-held island.",
+                combatants: "United States vs Japan",
+                tanks: "~800 US vs ~40 Japanese",
+                result: "American victory",
+                victory: "allied",
+                significance: "Strategic airbase for B-29s",
+                front: "pacific",
+                iconColor: "#32CD32",
+                year: 1944
+            },
+            {
+                id: 29,
+                name: "Battle of Iwo Jima (1945)",
+                location: "Iwo Jima, Japan",
+                coordinates: [24.79, 141.32],
+                elevation: 169,
+                elevation_ft: 554,
+                terrain: "Volcanic island, caves",
+                date: "February 19 - March 26, 1945",
+                description: "Famous amphibious assault.",
+                combatants: "United States vs Japan",
+                tanks: "~200 US vs unknown Japanese",
+                result: "American victory",
+                victory: "allied",
+                significance: "Strategic airbase close to Japan",
+                front: "pacific",
+                iconColor: "#4B0082",
+                year: 1945
+            },
+            {
+                id: 30,
+                name: "Battle of Okinawa (1945)",
+                location: "Okinawa, Japan",
+                coordinates: [26.50, 127.93],
+                elevation: 503,
+                elevation_ft: 1650,
+                terrain: "Island, hills, caves",
+                date: "April 1 - June 22, 1945",
+                description: "Largest amphibious assault in Pacific.",
+                combatants: "United States vs Japan",
+                tanks: "~800 US vs ~27 Japanese",
+                result: "Allied victory",
+                victory: "allied",
+                significance: "Last major battle of WWII",
+                front: "pacific",
+                iconColor: "#4B0082",
+                year: 1945
+            }
+        ];
+
+        // Initialize map centered on Europe/Africa
+        const map = L.map('map').setView([30.0, 20.0], 2);
+        
+        // Variables for area selection and metadata
+        let drawnItems = new L.FeatureGroup();
+        let currentRectangle = null;
+        let drawControl = null;
+        let isDrawing = false;
+        let capturedImageData = null;
+        let currentHeightmap = null;
+        let currentTerrainLayer = null;
+        let currentAreaDimensions = null;
+        let currentMarkers = [];
+        let activeFront = 'all';
+
+        // Clean terrain-only tile layers (NO ROADS)
+        const cleanTerrainLayers = {
+            "Relief Map (Cleanest)": L.tileLayer('https://tileserver.maptoolkit.net/relief/{z}/{x}/{y}.png', {
+                attribution: '© MapTiler | © OpenStreetMap contributors',
+                maxZoom: 15
+            }),
+            
+            "SRTM Elevation": L.tileLayer('https://tile.memomaps.de/tilegen/{z}/{x}/{y}.png', {
+                attribution: 'Map <a href="https://memomaps.de/">memomaps.de</a>',
+                maxZoom: 18
+            }),
+            
+            "Hillshade": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Esri, HERE, Garmin, FAO, NOAA, USGS',
+                maxZoom: 15
+            }),
+            
+            "Natural Earth II": L.tileLayer('https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}.jpg', {
+                attribution: 'Stadia Maps, Stamen Design, OpenStreetMap contributors',
+                maxZoom: 18
+            })
+        };
+
+        // Regular map layers (with roads)
+        const regularLayers = {
+            "OpenTopoMap (With Roads)": L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors, SRTM',
+                maxZoom: 17
+            }),
+            "Esri World Imagery": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Esri, Maxar, Earthstar Geographics',
+                maxZoom: 19
+            }),
+            "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19
+            })
+        };
+
+        // Combine all layers
+        const allLayers = {...cleanTerrainLayers, ...regularLayers};
+
+        // Set default to clean relief map
+        currentTerrainLayer = cleanTerrainLayers["Relief Map (Cleanest)"];
+        currentTerrainLayer.addTo(map);
+        map.addLayer(drawnItems);
+
+        // Add layer control
+        const layerControl = L.control.layers(allLayers).addTo(map);
+
+        // Function to get front color
+        const getFrontColor = (front) => {
+            switch(front) {
+                case 'eastern': return '#4a6b2a';
+                case 'western': return '#4169E1';
+                case 'north-africa': return '#DAA520';
+                case 'italian': return '#9370DB';
+                case 'pacific': return '#DC143C';
+                default: return '#888';
+            }
+        };
+
+        // Function to get elevation color based on height
+        const getElevationColor = (elevation) => {
+            if (elevation < 50) return '#00b09b';
+            if (elevation < 100) return '#96c93d';
+            if (elevation < 150) return '#ffcc00';
+            if (elevation < 200) return '#ff7e00';
+            return '#ff0000';
+        };
+
+        // Custom tank icon
+        const createTankIcon = (color, elevation, victory, front) => {
+            const elevColor = getElevationColor(elevation);
+            const frontColor = getFrontColor(front);
+            
+            let victoryColor = '#888';
+            if (victory === 'axis') victoryColor = '#4a4a4a';
+            if (victory === 'soviet') victoryColor = '#4a6b2a';
+            if (victory === 'allied') victoryColor = '#4169E1';
+            
+            return L.divIcon({
+                html: `
+                    <div style="position: relative;">
+                        <svg width="36" height="36" viewBox="0 0 24 24" class="tank-icon" style="filter: drop-shadow(3px 3px 3px rgba(0,0,0,0.7));">
+                            <path fill="${color}" d="M20,12H22V14H20V16H18V14H16V12H18V10H20V12M6,12H8V14H6V16H4V14H2V12H4V10H6V12M14,7H18V9H14V7M14,15H18V17H14V15M2,7H6V9H2V7M22,7H10V9H22V7M2,15H6V17H2V15M22,15H10V17H22V15M14,11H18V13H14V11Z"/>
+                        </svg>
+                        <div style="position: absolute; top: -5px; right: -5px; width: 16px; height: 16px; background: ${elevColor}; border: 2px solid ${frontColor}; border-radius: 50%; font-size: 8px; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; text-shadow: 1px 1px 1px black;">
+                            ${Math.round(elevation)}
+                        </div>
+                        <div style="position: absolute; bottom: -3px; left: 50%; transform: translateX(-50%); width: 20px; height: 3px; background: ${victoryColor}; border-radius: 2px;"></div>
+                    </div>
+                `,
+                className: 'battle-marker',
+                iconSize: [36, 36],
+                iconAnchor: [18, 18]
+            });
+        };
+
+        // Add markers for battles
+        function addMarkers(filterFront = 'all') {
+            // Clear existing markers
+            currentMarkers.forEach(marker => {
+                if (marker && marker.remove) {
+                    marker.remove();
+                }
+            });
+            currentMarkers = [];
+            
+            // Filter battles
+            const filteredBattles = filterFront === 'all' 
+                ? tankBattles 
+                : tankBattles.filter(battle => battle.front === filterFront);
+            
+            // Add new markers
+            filteredBattles.forEach(battle => {
+                const marker = L.marker(battle.coordinates, {
+                    icon: createTankIcon(battle.iconColor, battle.elevation, battle.victory, battle.front)
+                }).addTo(map);
+                
+                const popupContent = `
+                    <div style="min-width: 250px; padding: 10px; background: linear-gradient(135deg, ${getFrontColor(battle.front)}, #333); color: white; border-radius: 5px; border: 2px solid ${getFrontColor(battle.front)}; border-left: 5px solid ${battle.iconColor}">
+                        <h3 style="margin: 0 0 10px 0; color: #ffcc00;">${battle.name}</h3>
+                        <p><strong>📍 Location:</strong> ${battle.location}</p>
+                        <p><strong>🎯 Front:</strong> ${battle.front.replace('-', ' ').toUpperCase()}</p>
+                        <p><strong>📅 Date:</strong> ${battle.date}</p>
+                        <p><strong>⚔️ Result:</strong> ${battle.result}</p>
+                        <p><strong>⛰️ Elevation:</strong> ${battle.elevation}m</p>
+                        <p>${battle.description}</p>
+                    </div>
+                `;
+                
+                marker.bindPopup(popupContent);
+                currentMarkers.push(marker);
+            });
+            
+            // Update counter
+            document.getElementById('battleCounter').textContent = 
+                `Showing ${filteredBattles.length}/30 battles (${filterFront.replace('-', ' ').toUpperCase()})`;
+        }
+
+        // Filter battles by front
+        function filterBattles(front) {
+            activeFront = front;
+            
+            // Update active button
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`.filter-btn[data-front="${front}"]`).classList.add('active');
+            
+            // Add markers for selected front
+            addMarkers(front);
+            
+            // Adjust map view based on front
+            let center, zoom;
+            switch(front) {
+                case 'eastern':
+                    center = [50.0, 30.0];
+                    zoom = 3;
+                    break;
+                case 'western':
+                    center = [50.0, 2.0];
+                    zoom = 5;
+                    break;
+                case 'north-africa':
+                    center = [30.0, 20.0];
+                    zoom = 3;
+                    break;
+                case 'italian':
+                    center = [42.0, 13.0];
+                    zoom = 6;
+                    break;
+                case 'pacific':
+                    center = [20.0, 140.0];
+                    zoom = 3;
+                    break;
+                default:
+                    center = [30.0, 20.0];
+                    zoom = 2;
+            }
+            
+            map.setView(center, zoom);
+            
+            showStatus(`Showing ${front === 'all' ? 'all' : front.replace('-', ' ')} front battles`, 'success');
+        }
+
+        // Initialize markers (show all by default)
+        addMarkers('all');
+
+        // Initialize Leaflet Draw for rectangle selection
+        function initDrawControl() {
+            drawControl = new L.Control.Draw({
+                draw: {
+                    polygon: false,
+                    polyline: false,
+                    circle: false,
+                    circlemarker: false,
+                    marker: false,
+                    rectangle: {
+                        shapeOptions: {
+                            color: '#00ff00',
+                            weight: 3,
+                            fillColor: '#00ff00',
+                            fillOpacity: 0.1
+                        }
+                    }
+                },
+                edit: {
+                    featureGroup: drawnItems,
+                    remove: false
+                }
+            });
+            map.addControl(drawControl);
+        }
+
+        // Calculate distance between two coordinates in meters
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // Earth's radius in meters
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // Calculate area dimensions and store them
+        function calculateAreaDimensions(bounds) {
+            const ne = bounds.getNorthEast();
+            const sw = bounds.getSouthWest();
+            
+            // Calculate distances
+            const widthMeters = calculateDistance(sw.lat, sw.lng, sw.lat, ne.lng);
+            const heightMeters = calculateDistance(sw.lat, sw.lng, ne.lat, sw.lng);
+            const areaSqMeters = widthMeters * heightMeters;
+            const areaSqKm = areaSqMeters / 1000000;
+            
+            // Convert to km for display
+            const widthKm = (widthMeters / 1000).toFixed(2);
+            const heightKm = (heightMeters / 1000).toFixed(2);
+            const areaSqKmFormatted = areaSqKm.toFixed(2);
+            
+            // Store for later use
+            currentAreaDimensions = {
+                widthMeters: Math.round(widthMeters),
+                heightMeters: Math.round(heightMeters),
+                widthKm: parseFloat(widthKm),
+                heightKm: parseFloat(heightKm),
+                areaSqMeters: Math.round(areaSqMeters),
+                areaSqKm: parseFloat(areaSqKmFormatted),
+                bounds: {
+                    north: bounds.getNorth().toFixed(6),
+                    south: bounds.getSouth().toFixed(6),
+                    east: bounds.getEast().toFixed(6),
+                    west: bounds.getWest().toFixed(6)
+                }
+            };
+            
+            return currentAreaDimensions;
+        }
+
+        // Update area dimensions display
+        function updateAreaDimensions(bounds) {
+            const dimensions = calculateAreaDimensions(bounds);
+            
+            document.getElementById('dimensionsDisplay').innerHTML = 
+                `Selected Area: ${dimensions.widthKm} km × ${dimensions.heightKm} km<br>` +
+                `(${dimensions.widthMeters} m × ${dimensions.heightMeters} m)<br>` +
+                `Total Area: ${dimensions.areaSqKm} km²`;
+            
+            // Show area info section
+            document.getElementById('areaInfo').style.display = 'block';
+            
+            // Scroll to area info section
+            document.getElementById('areaInfo').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        // Handle rectangle drawn event
+        map.on('draw:created', function(e) {
+            drawnItems.clearLayers();
+            currentRectangle = e.layer;
+            drawnItems.addLayer(currentRectangle);
+            
+            // Update area dimensions
+            const bounds = currentRectangle.getBounds();
+            updateAreaDimensions(bounds);
+            
+            // Show success message
+            showStatus('Area selected successfully! Now capture the terrain.', 'success');
+            
+            // Exit drawing mode
+            exitDrawingMode();
+            
+            // Clear previous preview
+            clearPreview();
+        });
+
+        // Toggle sidebar visibility
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const map = document.getElementById('map');
+            const toggleIcon = document.querySelector('.sidebar-toggle i');
+            
+            sidebar.classList.toggle('sidebar-collapsed');
+            
+            if (sidebar.classList.contains('sidebar-collapsed')) {
+                map.classList.remove('map-with-sidebar');
+                map.classList.add('map-fullscreen');
+                toggleIcon.className = 'fas fa-chevron-right';
+            } else {
+                map.classList.remove('map-fullscreen');
+                map.classList.add('map-with-sidebar');
+                toggleIcon.className = 'fas fa-chevron-left';
+            }
+            
+            // Trigger map resize
+            setTimeout(() => {
+                map.invalidateSize();
+            }, 300);
+        }
+
+        // Enter drawing mode
+        function enterDrawingMode() {
+            isDrawing = true;
+            document.getElementById('selectAreaBtn').innerHTML = '<i class="fas fa-hand-paper"></i> Cancel Selection';
+            document.getElementById('selectAreaBtn').style.background = 'linear-gradient(135deg, #cc3300, #992200)';
+            
+            if (!drawControl) {
+                initDrawControl();
+            }
+            
+            // Activate rectangle drawing
+            const drawRectangle = new L.Draw.Rectangle(map, drawControl.options.draw.rectangle);
+            drawRectangle.enable();
+            
+            showStatus('Click and drag on the map to draw a selection rectangle.', 'success');
+        }
+
+        // Exit drawing mode
+        function exitDrawingMode() {
+            isDrawing = false;
+            document.getElementById('selectAreaBtn').innerHTML = '<i class="fas fa-draw-polygon"></i> Select Area';
+            document.getElementById('selectAreaBtn').style.background = 'linear-gradient(135deg, #0088cc, #006699)';
+            
+            if (drawControl) {
+                map.removeControl(drawControl);
+                drawControl = null;
+            }
+        }
+
+        // Clear selection
+        function clearSelection() {
+            drawnItems.clearLayers();
+            currentRectangle = null;
+            document.getElementById('areaInfo').style.display = 'none';
+            document.getElementById('dimensionsDisplay').innerHTML = 'Area: 0 × 0 km';
+            showStatus('Selection cleared.', 'success');
+            exitDrawingMode();
+            clearPreview();
+            currentAreaDimensions = null;
+        }
+
+        // Clear preview
+        function clearPreview() {
+            const previewImg = document.getElementById('terrainPreview');
+            previewImg.style.display = 'none';
+            previewImg.src = '';
+            capturedImageData = null;
+            currentHeightmap = null;
+            currentAreaDimensions = null;
+        }
+
+        // Show status message
+        function showStatus(message, type) {
+            const statusElement = document.getElementById('statusMessage');
+            statusElement.textContent = message;
+            statusElement.className = `status-message ${type}`;
+            
+            // Scroll to status message
+            setTimeout(() => {
+                statusElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 100);
+            
+            setTimeout(() => {
+                statusElement.style.display = 'none';
+            }, 5000);
+        }
+
+        // Show loading overlay
+        function showLoading(message = 'Processing...') {
+            const overlay = document.getElementById('loadingOverlay');
+            const spinner = overlay.querySelector('.loading-spinner');
+            spinner.innerHTML = `<div>${message}</div><div>⏳ Please wait</div>`;
+            overlay.style.display = 'flex';
+        }
+
+        // Hide loading overlay
+        function hideLoading() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        }
+
+        // Change terrain layer
+        function changeTerrainLayer(layerType) {
+            // Remove current terrain layer
+            if (currentTerrainLayer) {
+                map.removeLayer(currentTerrainLayer);
+            }
+            
+            // Add new layer
+            switch(layerType) {
+                case 'relief':
+                    currentTerrainLayer = cleanTerrainLayers["Relief Map (Cleanest)"];
+                    break;
+                case 'srtm':
+                    currentTerrainLayer = cleanTerrainLayers["SRTM Elevation"];
+                    break;
+                case 'hillshade':
+                    currentTerrainLayer = cleanTerrainLayers["Hillshade"];
+                    break;
+            }
+            
+            currentTerrainLayer.addTo(map);
+            
+            // Update UI
+            document.querySelectorAll('.terrain-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            document.getElementById('option' + layerType.charAt(0).toUpperCase() + layerType.slice(1))
+                .classList.add('selected');
+            
+            showStatus(`Switched to ${layerType} terrain layer`, 'success');
+        }
+
+        // Capture the selected area from the map
+        async function captureSelectedArea() {
+            if (!currentRectangle) {
+                showStatus('Please select an area first!', 'error');
+                return;
+            }
+            
+            showLoading('Capturing clean terrain image...');
+            
+            try {
+                // Hide battle markers and selection rectangle temporarily
+                drawnItems.removeFrom(map);
+                currentMarkers.forEach(marker => {
+                    if (marker && marker.remove) {
+                        map.removeLayer(marker);
+                    }
+                });
+                
+                // Get bounds of the rectangle
+                const bounds = currentRectangle.getBounds();
+                calculateAreaDimensions(bounds); // Calculate and store dimensions
+                
+                const ne = bounds.getNorthEast();
+                const sw = bounds.getSouthWest();
+                
+                // Convert bounds to pixel coordinates
+                const topLeft = map.latLngToContainerPoint([ne.lat, sw.lng]);
+                const bottomRight = map.latLngToContainerPoint([sw.lat, ne.lng]);
+                
+                const width = bottomRight.x - topLeft.x;
+                const height = bottomRight.y - topLeft.y;
+                
+                // Capture the map container
+                const mapContainer = document.getElementById('map');
+                
+                // Use html2canvas to capture the specific area
+                const canvas = await html2canvas(mapContainer, {
+                    x: topLeft.x,
+                    y: topLeft.y,
+                    width: width,
+                    height: height,
+                    scale: 1,
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: null
+                });
+                
+                // Restore battle markers and rectangle
+                drawnItems.addTo(map);
+                filterBattles(activeFront); // Restore filtered markers
+                
+                // Convert to image and display preview
+                const previewImg = document.getElementById('terrainPreview');
+                previewImg.src = canvas.toDataURL('image/png');
+                previewImg.style.display = 'block';
+                
+                // Store the image data for processing
+                capturedImageData = canvas;
+                
+                // Process the captured image into a heightmap
+                processImageToHeightmap(canvas);
+                
+                showStatus('Clean terrain captured! Adjust heightmap settings.', 'success');
+                
+            } catch (error) {
+                console.error('Capture error:', error);
+                showStatus('Failed to capture terrain. Please try again.', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Process captured image into heightmap
+        function processImageToHeightmap(canvas) {
+            showLoading('Converting to heightmap...');
+            
+            setTimeout(() => {
+                try {
+                    const ctx = canvas.getContext('2d');
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const data = imageData.data;
+                    
+                    // Get settings
+                    const enhanceContrast = document.getElementById('enhanceContrast').checked;
+                    const invertHeights = document.getElementById('invertHeights').checked;
+                    const heightScale = parseFloat(document.getElementById('heightScale').value);
+                    const resolution = parseInt(document.getElementById('resolution').value);
+                    
+                    // Create a new canvas for the heightmap
+                    const heightmapCanvas = document.createElement('canvas');
+                    heightmapCanvas.width = resolution;
+                    heightmapCanvas.height = resolution;
+                    const hmCtx = heightmapCanvas.getContext('2d');
+                    
+                    // Draw the captured image onto the heightmap canvas (scaled to resolution)
+                    hmCtx.drawImage(canvas, 0, 0, resolution, resolution);
+                    
+                    // Get the scaled image data
+                    const hmImageData = hmCtx.getImageData(0, 0, resolution, resolution);
+                    const hmData = hmImageData.data;
+                    
+                    // Create heightmap data array
+                    const heightmap = new Uint16Array(resolution * resolution);
+                    
+                    // For clean terrain layers, we need to process differently
+                    let minGray = 255;
+                    let maxGray = 0;
+                    
+                    // First pass: find min and max values
+                    for (let i = 0; i < hmData.length; i += 4) {
+                        const r = hmData[i];
+                        const g = hmData[i + 1];
+                        const b = hmData[i + 2];
+                        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                        
+                        minGray = Math.min(minGray, gray);
+                        maxGray = Math.max(maxGray, gray);
+                    }
+                    
+                    // Second pass: normalize and create heightmap
+                    for (let i = 0; i < hmData.length; i += 4) {
+                        const pixelIndex = i / 4;
+                        const r = hmData[i];
+                        const g = hmData[i + 1];
+                        const b = hmData[i + 2];
+                        
+                        // Convert RGB to grayscale
+                        let gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                        
+                        // Normalize to full range
+                        if (maxGray > minGray) {
+                            gray = ((gray - minGray) / (maxGray - minGray)) * 255;
+                        }
+                        
+                        // Enhance contrast for terrain
+                        if (enhanceContrast) {
+                            gray = Math.pow(gray / 255, 1.2) * 255;
+                        }
+                        
+                        // Apply height scaling
+                        gray = Math.min(255, Math.max(0, gray * heightScale));
+                        
+                        // Invert if needed
+                        if (invertHeights) {
+                            gray = 255 - gray;
+                        }
+                        
+                        // Convert to 16-bit for Unity
+                        const heightValue = Math.floor((gray / 255) * 65535);
+                        heightmap[pixelIndex] = heightValue;
+                        
+                        // Update preview with grayscale
+                        hmData[i] = gray;
+                        hmData[i + 1] = gray;
+                        hmData[i + 2] = gray;
+                        hmData[i + 3] = 255;
+                    }
+                    
+                    // Update the heightmap canvas
+                    hmCtx.putImageData(hmImageData, 0, 0);
+                    
+                    // Update preview
+                    const previewImg = document.getElementById('terrainPreview');
+                    previewImg.src = heightmapCanvas.toDataURL('image/png');
+                    
+                    // Store the processed heightmap
+                    currentHeightmap = {
+                        canvas: heightmapCanvas,
+                        data: heightmap,
+                        width: resolution,
+                        height: resolution,
+                        bounds: currentRectangle.getBounds(),
+                        dimensions: currentAreaDimensions
+                    };
+                    
+                    hideLoading();
+                    showStatus('Clean heightmap generated! Ready for export.', 'success');
+                    
+                } catch (error) {
+                    console.error('Heightmap processing error:', error);
+                    hideLoading();
+                    showStatus('Failed to generate heightmap.', 'error');
+                }
+            }, 100);
+        }
+
+        // Export as PNG heightmap with embedded metadata
+        async function exportPNG() {
+            if (!currentHeightmap) {
+                showStatus('Please capture and generate a heightmap first!', 'error');
+                return;
+            }
+            
+            showLoading('Adding metadata to PNG file...');
+            
+            try {
+                const embedMetadata = document.getElementById('embedMetadata').checked;
+                let canvas = currentHeightmap.canvas;
+                
+                // Convert canvas to blob
+                canvas.toBlob(async (blob) => {
+                    const dateStr = new Date().toISOString().split('T')[0];
+                    let filename;
+                    
+                    if (embedMetadata && currentAreaDimensions) {
+                        filename = `heightmap_${currentHeightmap.width}x${currentHeightmap.height}_${currentAreaDimensions.widthKm}x${currentAreaDimensions.heightKm}km_${dateStr}.png`;
+                    } else {
+                        filename = `heightmap_${currentHeightmap.width}x${currentHeightmap.height}_${dateStr}.png`;
+                    }
+                    
+                    // Create download link
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    hideLoading();
+                    showStatus(`PNG heightmap exported! Filename includes area dimensions.`, 'success');
+                    
+                }, 'image/png');
+                
+            } catch (error) {
+                console.error('PNG export error:', error);
+                hideLoading();
+                showStatus('Failed to export PNG. Please try again.', 'error');
+            }
+        }
+
+        // Export as RAW file (16-bit grayscale)
+        function exportRAW() {
+            if (!currentHeightmap) {
+                showStatus('Please capture and generate a heightmap first!', 'error');
+                return;
+            }
+            
+            const buffer = new ArrayBuffer(currentHeightmap.data.length * 2);
+            const view = new DataView(buffer);
+            
+            for (let i = 0; i < currentHeightmap.data.length; i++) {
+                view.setUint16(i * 2, currentHeightmap.data[i], true);
+            }
+            
+            const dateStr = new Date().toISOString().split('T')[0];
+            const filename = currentAreaDimensions 
+                ? `heightmap_${currentHeightmap.width}x${currentHeightmap.height}_${currentAreaDimensions.widthKm}x${currentAreaDimensions.heightKm}km_${dateStr}.raw`
+                : `heightmap_${currentHeightmap.width}x${currentHeightmap.height}.raw`;
+            
+            const blob = new Blob([buffer], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showStatus(`RAW heightmap exported with area info in filename!`, 'success');
+        }
+
+        // Export as JSON with metadata
+        function exportJSON() {
+            if (!currentHeightmap) {
+                showStatus('Please capture and generate a heightmap first!', 'error');
+                return;
+            }
+            
+            const bounds = currentHeightmap.bounds;
+            const jsonData = {
+                metadata: {
+                    format: "Unity Terrain Heightmap from Clean Terrain",
+                    version: "3.0",
+                    resolution: `${currentHeightmap.width}x${currentHeightmap.height}`,
+                    maxHeight: 65535,
+                    bounds: {
+                        north: bounds.getNorth(),
+                        south: bounds.getSouth(),
+                        east: bounds.getEast(),
+                        west: bounds.getWest()
+                    },
+                    areaDimensions: currentAreaDimensions,
+                    source: "Clean Terrain Map (No Roads)",
+                    captureDate: new Date().toISOString(),
+                    settings: {
+                        enhanceContrast: document.getElementById('enhanceContrast').checked,
+                        invertHeights: document.getElementById('invertHeights').checked,
+                        heightScale: parseFloat(document.getElementById('heightScale').value)
+                    }
+                },
+                heightDataBase64: btoa(String.fromCharCode.apply(null, new Uint8Array(currentHeightmap.data.buffer)))
+            };
+            
+            const jsonStr = JSON.stringify(jsonData, null, 2);
+            const dateStr = new Date().toISOString().split('T')[0];
+            const filename = currentAreaDimensions 
+                ? `terrain_${currentHeightmap.width}x${currentHeightmap.height}_${currentAreaDimensions.widthKm}x${currentAreaDimensions.heightKm}km_${dateStr}.json`
+                : `terrain_${currentHeightmap.width}x${currentHeightmap.height}.json`;
+            
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showStatus(`Terrain JSON data with area dimensions exported!`, 'success');
+        }
+
+        // Update height scale value display
+        document.getElementById('heightScale').addEventListener('input', function() {
+            document.getElementById('heightScaleValue').textContent = this.value + 'x';
+            
+            if (capturedImageData) {
+                processImageToHeightmap(capturedImageData);
+            }
+        });
+
+        // Reprocess when settings change
+        document.getElementById('enhanceContrast').addEventListener('change', function() {
+            if (capturedImageData) {
+                processImageToHeightmap(capturedImageData);
+            }
+        });
+
+        document.getElementById('invertHeights').addEventListener('change', function() {
+            if (capturedImageData) {
+                processImageToHeightmap(capturedImageData);
+            }
+        });
+
+        document.getElementById('resolution').addEventListener('change', function() {
+            if (capturedImageData) {
+                processImageToHeightmap(capturedImageData);
+            }
+        });
+
+        // Terrain layer selection
+        document.querySelectorAll('input[name="terrainType"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                changeTerrainLayer(this.value);
+            });
+        });
+
+        // Battle filter buttons
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const front = this.getAttribute('data-front');
+                filterBattles(front);
+            });
+        });
+
+        // Event listeners
+        document.getElementById('selectAreaBtn').addEventListener('click', function() {
+            if (isDrawing) {
+                exitDrawingMode();
+                showStatus('Selection cancelled.', 'success');
+            } else {
+                enterDrawingMode();
+            }
+        });
+
+        document.getElementById('clearSelectionBtn').addEventListener('click', clearSelection);
+        document.getElementById('captureBtn').addEventListener('click', captureSelectedArea);
+        document.getElementById('clearPreviewBtn').addEventListener('click', clearPreview);
+        document.getElementById('exportPNGBtn').addEventListener('click', exportPNG);
+        document.getElementById('exportRawBtn').addEventListener('click', exportRAW);
+        document.getElementById('exportJSONBtn').addEventListener('click', exportJSON);
+        document.getElementById('sidebarToggle').addEventListener('click', toggleSidebar);
+
+        // Keyboard shortcut for sidebar (Ctrl+Shift+S)
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+                e.preventDefault();
+                toggleSidebar();
+            }
+        });
+
+        // Initialize map adjustment for sidebar
+        document.getElementById('map').classList.add('map-with-sidebar');
+
+        // Add scale control
+        L.control.scale({
+            imperial: false,
+            position: 'bottomleft'
+        }).addTo(map);
+
+        // Fit map to show all markers with padding (world view)
+        const allCoordinates = tankBattles.map(battle => battle.coordinates);
+        const bounds = L.latLngBounds(allCoordinates);
+        map.fitBounds(bounds.pad(0.3));
+
+        // Show initial status message
+        setTimeout(() => {
+            showStatus('Welcome! Filter battles by front and capture terrain for Unity.', 'success');
+        }, 1000);
+    </script>
+</body>
+</html>
