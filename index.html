@@ -1976,8 +1976,8 @@
                 // Store the image data for processing
                 capturedImageData = canvas;
                 
-                // Process the captured image into a heightmap
-                processImageToHeightmap(canvas);
+                // Fetch real elevation data for the selected area and build the heightmap
+                generateElevationHeightmap(bounds);
                 
                 showStatus('Clean terrain captured! Adjust heightmap settings.', 'success');
                 
@@ -1989,118 +1989,183 @@
             }
         }
 
-        // Process captured image into heightmap
-        function processImageToHeightmap(canvas) {
-            showLoading('Converting to heightmap...');
-            
-            setTimeout(() => {
-                try {
-                    const ctx = canvas.getContext('2d');
-                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    const data = imageData.data;
-                    
-                    // Get settings
-                    const enhanceContrast = document.getElementById('enhanceContrast').checked;
-                    const invertHeights = document.getElementById('invertHeights').checked;
-                    const heightScale = parseFloat(document.getElementById('heightScale').value);
-                    const resolution = parseInt(document.getElementById('resolution').value);
-                    
-                    // Create a new canvas for the heightmap
-                    const heightmapCanvas = document.createElement('canvas');
-                    heightmapCanvas.width = resolution;
-                    heightmapCanvas.height = resolution;
-                    const hmCtx = heightmapCanvas.getContext('2d');
-                    
-                    // Draw the captured image onto the heightmap canvas (scaled to resolution)
-                    hmCtx.drawImage(canvas, 0, 0, resolution, resolution);
-                    
-                    // Get the scaled image data
-                    const hmImageData = hmCtx.getImageData(0, 0, resolution, resolution);
-                    const hmData = hmImageData.data;
-                    
-                    // Create heightmap data array
-                    const heightmap = new Uint16Array(resolution * resolution);
-                    
-                    // For clean terrain layers, we need to process differently
-                    let minGray = 255;
-                    let maxGray = 0;
-                    
-                    // First pass: find min and max values
-                    for (let i = 0; i < hmData.length; i += 4) {
-                        const r = hmData[i];
-                        const g = hmData[i + 1];
-                        const b = hmData[i + 2];
-                        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-                        
-                        minGray = Math.min(minGray, gray);
-                        maxGray = Math.max(maxGray, gray);
-                    }
-                    
-                    // Second pass: normalize and create heightmap
-                    for (let i = 0; i < hmData.length; i += 4) {
-                        const pixelIndex = i / 4;
-                        const r = hmData[i];
-                        const g = hmData[i + 1];
-                        const b = hmData[i + 2];
-                        
-                        // Convert RGB to grayscale
-                        let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-                        
-                        // Normalize to full range
-                        if (maxGray > minGray) {
-                            gray = ((gray - minGray) / (maxGray - minGray)) * 255;
-                        }
-                        
-                        // Enhance contrast for terrain
-                        if (enhanceContrast) {
-                            gray = Math.pow(gray / 255, 1.2) * 255;
-                        }
-                        
-                        // Apply height scaling
-                        gray = Math.min(255, Math.max(0, gray * heightScale));
-                        
-                        // Invert if needed
-                        if (invertHeights) {
-                            gray = 255 - gray;
-                        }
-                        
-                        // Convert to 16-bit for Unity
-                        const heightValue = Math.floor((gray / 255) * 65535);
-                        heightmap[pixelIndex] = heightValue;
-                        
-                        // Update preview with grayscale
-                        hmData[i] = gray;
-                        hmData[i + 1] = gray;
-                        hmData[i + 2] = gray;
-                        hmData[i + 3] = 255;
-                    }
-                    
-                    // Update the heightmap canvas
-                    hmCtx.putImageData(hmImageData, 0, 0);
-                    
-                    // Update preview
-                    const previewImg = document.getElementById('terrainPreview');
-                    previewImg.src = heightmapCanvas.toDataURL('image/png');
-                    
-                    // Store the processed heightmap
-                    currentHeightmap = {
-                        canvas: heightmapCanvas,
-                        data: heightmap,
-                        width: resolution,
-                        height: resolution,
-                        bounds: currentRectangle.getBounds(),
-                        dimensions: currentAreaDimensions
-                    };
-                    
-                    hideLoading();
-                    showStatus('Clean heightmap generated! Ready for export.', 'success');
-                    
-                } catch (error) {
-                    console.error('Heightmap processing error:', error);
-                    hideLoading();
-                    showStatus('Failed to generate heightmap.', 'error');
+        // Terrarium-encoded elevation tiles (AWS elevation-tiles-prod): free, keyless, CORS-enabled
+        const ELEVATION_TILE_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+        const ELEVATION_MAX_ZOOM = 15;
+        const ELEVATION_MAX_TILES = 36; // safety cap on simultaneous tile fetches
+
+        function decodeTerrariumElevation(r, g, b) {
+            return (r * 256 + g + b / 256) - 32768;
+        }
+
+        function loadImage(src) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error(`Failed to load ${src}`));
+                img.src = src;
+            });
+        }
+
+        async function loadElevationTile(z, x, y) {
+            const url = ELEVATION_TILE_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+            try {
+                return await loadImage(url);
+            } catch (e) {
+                return await loadImage(url); // one retry
+            }
+        }
+
+        // Pick the highest-detail zoom level whose tile count stays within the fetch budget
+        function pickElevationZoom(topLeft, bottomRight) {
+            for (let z = ELEVATION_MAX_ZOOM; z >= 1; z--) {
+                const tl = map.project(topLeft, z);
+                const br = map.project(bottomRight, z);
+                const tileXMin = Math.floor(tl.x / 256);
+                const tileXMax = Math.floor((br.x - 1) / 256);
+                const tileYMin = Math.floor(tl.y / 256);
+                const tileYMax = Math.floor((br.y - 1) / 256);
+                const numTilesX = Math.max(1, tileXMax - tileXMin + 1);
+                const numTilesY = Math.max(1, tileYMax - tileYMin + 1);
+                if (numTilesX * numTilesY <= ELEVATION_MAX_TILES) {
+                    return { zoom: z, tl, br, tileXMin, tileXMax, tileYMin, tileYMax, numTilesX, numTilesY };
                 }
-            }, 100);
+            }
+            const z = 1;
+            return { zoom: z, tl: map.project(topLeft, z), br: map.project(bottomRight, z), tileXMin: 0, tileXMax: 0, tileYMin: 0, tileYMax: 0, numTilesX: 1, numTilesY: 1 };
+        }
+
+        // Fetch real elevation tiles for the selected area and build a Unity-ready heightmap
+        async function generateElevationHeightmap(bounds) {
+            showLoading('Fetching real elevation data...');
+
+            try {
+                const enhanceContrast = document.getElementById('enhanceContrast').checked;
+                const invertHeights = document.getElementById('invertHeights').checked;
+                const heightScale = parseFloat(document.getElementById('heightScale').value);
+                const resolution = parseInt(document.getElementById('resolution').value);
+
+                const ne = bounds.getNorthEast();
+                const sw = bounds.getSouthWest();
+                const topLeft = L.latLng(ne.lat, sw.lng);
+                const bottomRight = L.latLng(sw.lat, ne.lng);
+
+                const { zoom, tl, br, tileXMin, tileYMin, numTilesX, numTilesY } =
+                    pickElevationZoom(topLeft, bottomRight);
+
+                // Fetch and mosaic all tiles covering the selected area
+                const tileSize = 256;
+                const mosaicCanvas = document.createElement('canvas');
+                mosaicCanvas.width = numTilesX * tileSize;
+                mosaicCanvas.height = numTilesY * tileSize;
+                const mosaicCtx = mosaicCanvas.getContext('2d');
+
+                const tilePromises = [];
+                for (let ty = 0; ty < numTilesY; ty++) {
+                    for (let tx = 0; tx < numTilesX; tx++) {
+                        tilePromises.push(
+                            loadElevationTile(zoom, tileXMin + tx, tileYMin + ty).then(img => ({ tx, ty, img }))
+                        );
+                    }
+                }
+                const loadedTiles = await Promise.all(tilePromises);
+                loadedTiles.forEach(({ tx, ty, img }) => {
+                    mosaicCtx.drawImage(img, tx * tileSize, ty * tileSize);
+                });
+
+                const mosaicWidth = mosaicCanvas.width;
+                const mosaicHeight = mosaicCanvas.height;
+                const mosaicData = mosaicCtx.getImageData(0, 0, mosaicWidth, mosaicHeight).data;
+
+                const elevationAt = (px, py) => {
+                    px = Math.max(0, Math.min(mosaicWidth - 1, px));
+                    py = Math.max(0, Math.min(mosaicHeight - 1, py));
+                    const idx = (py * mosaicWidth + px) * 4;
+                    return decodeTerrariumElevation(mosaicData[idx], mosaicData[idx + 1], mosaicData[idx + 2]);
+                };
+
+                // Crop region within the mosaic matching the exact selected bounds
+                const cropX = tl.x - tileXMin * tileSize;
+                const cropY = tl.y - tileYMin * tileSize;
+                const cropWidth = br.x - tl.x;
+                const cropHeight = br.y - tl.y;
+
+                // Resample the cropped region to the target resolution (bilinear)
+                const elevations = new Float32Array(resolution * resolution);
+                for (let row = 0; row < resolution; row++) {
+                    const srcY = cropY + (row / Math.max(1, resolution - 1)) * cropHeight;
+                    const y0 = Math.floor(srcY), y1 = y0 + 1, fy = srcY - y0;
+                    for (let col = 0; col < resolution; col++) {
+                        const srcX = cropX + (col / Math.max(1, resolution - 1)) * cropWidth;
+                        const x0 = Math.floor(srcX), x1 = x0 + 1, fx = srcX - x0;
+
+                        const eTop = elevationAt(x0, y0) + (elevationAt(x1, y0) - elevationAt(x0, y0)) * fx;
+                        const eBottom = elevationAt(x0, y1) + (elevationAt(x1, y1) - elevationAt(x0, y1)) * fx;
+                        elevations[row * resolution + col] = eTop + (eBottom - eTop) * fy;
+                    }
+                }
+
+                let minElev = Infinity, maxElev = -Infinity;
+                for (let i = 0; i < elevations.length; i++) {
+                    if (elevations[i] < minElev) minElev = elevations[i];
+                    if (elevations[i] > maxElev) maxElev = elevations[i];
+                }
+
+                // Normalize real elevation to 0-65535, applying the existing UI controls
+                const heightmap = new Uint16Array(resolution * resolution);
+                const previewData = new Uint8ClampedArray(resolution * resolution * 4);
+
+                for (let i = 0; i < elevations.length; i++) {
+                    let normalized = maxElev > minElev ? ((elevations[i] - minElev) / (maxElev - minElev)) * 255 : 0;
+
+                    if (enhanceContrast) {
+                        normalized = Math.pow(normalized / 255, 1.2) * 255;
+                    }
+
+                    normalized = Math.min(255, Math.max(0, normalized * heightScale));
+
+                    if (invertHeights) {
+                        normalized = 255 - normalized;
+                    }
+
+                    heightmap[i] = Math.floor((normalized / 255) * 65535);
+
+                    const p = i * 4;
+                    previewData[p] = normalized;
+                    previewData[p + 1] = normalized;
+                    previewData[p + 2] = normalized;
+                    previewData[p + 3] = 255;
+                }
+
+                const heightmapCanvas = document.createElement('canvas');
+                heightmapCanvas.width = resolution;
+                heightmapCanvas.height = resolution;
+                heightmapCanvas.getContext('2d').putImageData(new ImageData(previewData, resolution, resolution), 0, 0);
+
+                const previewImg = document.getElementById('terrainPreview');
+                previewImg.src = heightmapCanvas.toDataURL('image/png');
+                previewImg.style.display = 'block';
+
+                currentHeightmap = {
+                    canvas: heightmapCanvas,
+                    data: heightmap,
+                    width: resolution,
+                    height: resolution,
+                    bounds: currentRectangle.getBounds(),
+                    dimensions: currentAreaDimensions,
+                    minElevationM: Math.round(minElev),
+                    maxElevationM: Math.round(maxElev)
+                };
+
+                hideLoading();
+                showStatus(`Real elevation heightmap generated! Range: ${Math.round(minElev)}m - ${Math.round(maxElev)}m`, 'success');
+
+            } catch (error) {
+                console.error('Elevation heightmap error:', error);
+                hideLoading();
+                showStatus('Failed to fetch elevation data. Please try again.', 'error');
+            }
         }
 
         // Export as PNG heightmap with embedded metadata
@@ -2202,10 +2267,12 @@
             const bounds = currentHeightmap.bounds;
             const jsonData = {
                 metadata: {
-                    format: "Unity Terrain Heightmap from Clean Terrain",
-                    version: "3.0",
+                    format: "Unity Terrain Heightmap from Real Elevation Data",
+                    version: "4.0",
                     resolution: `${currentHeightmap.width}x${currentHeightmap.height}`,
                     maxHeight: 65535,
+                    minElevationMeters: currentHeightmap.minElevationM,
+                    maxElevationMeters: currentHeightmap.maxElevationM,
                     bounds: {
                         north: bounds.getNorth(),
                         south: bounds.getSouth(),
@@ -2213,7 +2280,7 @@
                         west: bounds.getWest()
                     },
                     areaDimensions: currentAreaDimensions,
-                    source: "Clean Terrain Map (No Roads)",
+                    source: "AWS elevation-tiles-prod (Terrarium encoding, SRTM/GMTED derived)",
                     captureDate: new Date().toISOString(),
                     settings: {
                         enhanceContrast: document.getElementById('enhanceContrast').checked,
