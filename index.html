@@ -1783,21 +1783,21 @@
         // Toggle sidebar visibility
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
-            const map = document.getElementById('map');
+            const mapElement = document.getElementById('map');
             const toggleIcon = document.querySelector('.sidebar-toggle i');
-            
+
             sidebar.classList.toggle('sidebar-collapsed');
-            
+
             if (sidebar.classList.contains('sidebar-collapsed')) {
-                map.classList.remove('map-with-sidebar');
-                map.classList.add('map-fullscreen');
+                mapElement.classList.remove('map-with-sidebar');
+                mapElement.classList.add('map-fullscreen');
                 toggleIcon.className = 'fas fa-chevron-right';
             } else {
-                map.classList.remove('map-fullscreen');
-                map.classList.add('map-with-sidebar');
+                mapElement.classList.remove('map-fullscreen');
+                mapElement.classList.add('map-with-sidebar');
                 toggleIcon.className = 'fas fa-chevron-left';
             }
-            
+
             // Trigger map resize
             setTimeout(() => {
                 map.invalidateSize();
@@ -1910,7 +1910,8 @@
             document.querySelectorAll('.terrain-option').forEach(opt => {
                 opt.classList.remove('selected');
             });
-            document.getElementById('option' + layerType.charAt(0).toUpperCase() + layerType.slice(1))
+            const optionId = layerType === 'srtm' ? 'optionSRTM' : 'option' + layerType.charAt(0).toUpperCase() + layerType.slice(1);
+            document.getElementById(optionId)
                 .classList.add('selected');
             
             showStatus(`Switched to ${layerType} terrain layer`, 'success');
@@ -2180,6 +2181,17 @@
             showStatus(`RAW heightmap exported with area info in filename!`, 'success');
         }
 
+        // Convert a Uint8Array to a binary string in chunks to avoid exceeding the call stack
+        // (String.fromCharCode.apply fails on large arrays like 1024x1024+ heightmaps)
+        function uint8ArrayToBinaryString(uint8Array) {
+            let result = '';
+            const chunkSize = 8192;
+            for (let i = 0; i < uint8Array.length; i += chunkSize) {
+                result += String.fromCharCode.apply(null, uint8Array.subarray(i, i + chunkSize));
+            }
+            return result;
+        }
+
         // Export as JSON with metadata
         function exportJSON() {
             if (!currentHeightmap) {
@@ -2209,7 +2221,7 @@
                         heightScale: parseFloat(document.getElementById('heightScale').value)
                     }
                 },
-                heightDataBase64: btoa(String.fromCharCode.apply(null, new Uint8Array(currentHeightmap.data.buffer)))
+                heightDataBase64: btoa(uint8ArrayToBinaryString(new Uint8Array(currentHeightmap.data.buffer)))
             };
             
             const jsonStr = JSON.stringify(jsonData, null, 2);
