@@ -779,12 +779,15 @@
                         <i class="fas fa-file-code"></i> Terrain Data (JSON)
                     </button>
                 </div>
-                
+
+                <div class="area-dimensions" id="unityScaleInfo" style="display: none;"></div>
+
                 <div class="info-box">
                     <p><strong><i class="fas fa-info-circle"></i> Unity Import:</strong></p>
                     <p>• PNG: Grayscale heightmap with metadata</p>
                     <p>• RAW: 16-bit little-endian format</p>
                     <p>• Area dimensions embedded in exports</p>
+                    <p>• Set Terrain "Height" to the value shown above for real-world proportions</p>
                 </div>
             </div>
             
@@ -1853,6 +1856,7 @@
             capturedImageData = null;
             currentHeightmap = null;
             currentAreaDimensions = null;
+            document.getElementById('unityScaleInfo').style.display = 'none';
         }
 
         // Show status message
@@ -2147,6 +2151,9 @@
                 previewImg.src = heightmapCanvas.toDataURL('image/png');
                 previewImg.style.display = 'block';
 
+                const minElevationM = Math.round(minElev);
+                const maxElevationM = Math.round(maxElev);
+
                 currentHeightmap = {
                     canvas: heightmapCanvas,
                     data: heightmap,
@@ -2154,12 +2161,18 @@
                     height: resolution,
                     bounds: currentRectangle.getBounds(),
                     dimensions: currentAreaDimensions,
-                    minElevationM: Math.round(minElev),
-                    maxElevationM: Math.round(maxElev)
+                    minElevationM,
+                    maxElevationM
                 };
 
+                const unityScaleInfo = document.getElementById('unityScaleInfo');
+                unityScaleInfo.innerHTML =
+                    `Unity Terrain "Height": ${maxElevationM - minElevationM} m<br>` +
+                    `<span style="font-size: 12px; font-weight: normal;">Real elevation: ${minElevationM}m - ${maxElevationM}m</span>`;
+                unityScaleInfo.style.display = 'block';
+
                 hideLoading();
-                showStatus(`Real elevation heightmap generated! Range: ${Math.round(minElev)}m - ${Math.round(maxElev)}m`, 'success');
+                showStatus(`Real elevation heightmap generated! Range: ${minElevationM}m - ${maxElevationM}m`, 'success');
 
             } catch (error) {
                 console.error('Elevation heightmap error:', error);
@@ -2273,6 +2286,7 @@
                     maxHeight: 65535,
                     minElevationMeters: currentHeightmap.minElevationM,
                     maxElevationMeters: currentHeightmap.maxElevationM,
+                    unityTerrainHeightMeters: currentHeightmap.maxElevationM - currentHeightmap.minElevationM,
                     bounds: {
                         north: bounds.getNorth(),
                         south: bounds.getSouth(),
